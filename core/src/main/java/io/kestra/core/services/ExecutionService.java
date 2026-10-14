@@ -6,12 +6,16 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZonedDateTime;
 import java.util.*;
+import java.util.concurrent.ExecutorService;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import org.reactivestreams.Publisher;
 
+import io.kestra.core.async.AsyncOperation;
+import io.kestra.core.async.AsyncOperationProcessedEvent;
+import io.kestra.core.async.AsyncOperationService;
 import io.kestra.core.async.AsyncOperationsConfiguration;
 import io.kestra.core.debug.Breakpoint;
 import io.kestra.core.events.CrudEvent;
@@ -48,6 +52,7 @@ import io.kestra.core.scheduler.queue.TriggerEventQueue;
 import io.kestra.core.storages.StorageContext;
 import io.kestra.core.storages.StorageInterface;
 import io.kestra.core.utils.Await;
+import io.kestra.core.utils.ExecutorsUtils;
 import io.kestra.core.utils.GraphUtils;
 import io.kestra.core.utils.IdUtils;
 import io.kestra.core.utils.ListUtils;
@@ -61,6 +66,7 @@ import io.micronaut.http.multipart.CompletedPart;
 import io.opentelemetry.api.OpenTelemetry;
 import io.opentelemetry.context.propagation.ContextPropagators;
 import jakarta.annotation.Nullable;
+import jakarta.annotation.PreDestroy;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
 import jakarta.validation.constraints.NotNull;
@@ -76,6 +82,8 @@ import static io.kestra.core.utils.Rethrow.*;
 @Singleton
 @Slf4j
 public class ExecutionService {
+    private static final int MAX_DELETION_THREADS = 4;
+
     private final StorageInterface storageInterface;
     private final ExecutionRepositoryInterface executionRepository;
     private final LogDataStoreInterface logRepository;
@@ -93,6 +101,8 @@ public class ExecutionService {
     private final AsyncOperationsConfiguration asyncOperationsConfiguration;
     private final TriggerEventQueue triggerEventQueue;
     private final Optional<OpenTelemetry> openTelemetry;
+    private final AsyncOperationService asyncOperationService;
+    private final ExecutorService deletionExecutorService;
 
     @Inject
     public ExecutionService(
@@ -112,7 +122,9 @@ public class ExecutionService {
         AsyncOperationWaiter asyncOperationWaiter,
         AsyncOperationsConfiguration asyncOperationsConfiguration,
         TriggerEventQueue triggerEventQueue,
-        Optional<OpenTelemetry> openTelemetry) {
+        Optional<OpenTelemetry> openTelemetry,
+        AsyncOperationService asyncOperationService,
+        ExecutorsUtils executorsUtils) {
         this.storageInterface = Objects.requireNonNull(storageInterface);
         this.executionRepository = Objects.requireNonNull(executionRepository);
         this.logRepository = Objects.requireNonNull(logRepository);
@@ -130,6 +142,13 @@ public class ExecutionService {
         this.asyncOperationsConfiguration = Objects.requireNonNull(asyncOperationsConfiguration);
         this.triggerEventQueue = Objects.requireNonNull(triggerEventQueue);
         this.openTelemetry = Objects.requireNonNull(openTelemetry);
+        this.asyncOperationService = Objects.requireNonNull(asyncOperationService);
+        this.deletionExecutorService = Objects.requireNonNull(executorsUtils).maxCachedVirtualThreadPool(MAX_DELETION_THREADS, "execution-deletion");
+    }
+
+    @PreDestroy
+    void shutdownDeletionExecutor() {
+        ExecutorsUtils.closeExecutorService("execution-deletion", deletionExecutorService, Duration.ofSeconds(10));
     }
 
     public Execution getExecutionIfPause(final String tenant, final @NotNull String executionId, boolean withACL) {
@@ -887,6 +906,31 @@ public class ExecutionService {
             URI uri = StorageContext.forExecution(execution).getExecutionStorageURI(StorageContext.KESTRA_SCHEME);
             storageInterface.deleteByPrefix(execution.getTenantId(), execution.getNamespace(), uri);
         }
+    }
+
+    /**
+     * Deletes {@code execution} on a background thread, emitting an {@link AsyncOperationProcessedEvent}
+     * for {@code operationId} so the caller's bulk-delete notification can track progress.
+     */
+    public void deleteAsync(Execution execution, String operationId, boolean deleteLogs, boolean deleteMetrics, boolean deleteStorage) {
+        deletionExecutorService.submit(() -> {
+            AsyncOperationProcessedEvent.Outcome outcome = AsyncOperationProcessedEvent.Outcome.SUCCEEDED;
+            String error = null;
+            try {
+                delete(execution, deleteLogs, deleteMetrics, deleteStorage);
+            } catch (Exception e) {
+                outcome = AsyncOperationProcessedEvent.Outcome.FAILED;
+                error = e.getMessage();
+                log.error("Failed to delete execution {}", execution.getId(), e);
+            } finally {
+                asyncOperationService.emitProcessedIfAsync(
+                    new DeleteOperation(operationId), execution.getTenantId(), execution.getId(), outcome, error
+                );
+            }
+        });
+    }
+
+    private record DeleteOperation(String operationId) implements AsyncOperation {
     }
 
     /**

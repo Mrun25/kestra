@@ -6,6 +6,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
+import io.kestra.core.async.AsyncOperationService;
 import io.kestra.core.async.AsyncOperationsConfiguration;
 import io.kestra.core.exceptions.KestraRuntimeException;
 import io.kestra.core.models.executions.Execution;
@@ -22,6 +23,7 @@ import io.kestra.core.scheduler.events.TriggerEvent;
 import io.kestra.core.scheduler.events.TriggerExecutionDeleted;
 import io.kestra.core.scheduler.queue.TriggerEventQueue;
 import io.kestra.core.storages.StorageInterface;
+import io.kestra.core.utils.ExecutorsUtils;
 import io.kestra.plugin.core.trigger.Schedule;
 import io.kestra.plugin.core.trigger.Webhook;
 
@@ -62,7 +64,9 @@ class ExecutionServiceDeleteTest {
             mock(AsyncOperationWaiter.class),
             mock(AsyncOperationsConfiguration.class),
             triggerEventQueue,
-            Optional.empty()
+            Optional.empty(),
+            mock(AsyncOperationService.class),
+            mock(ExecutorsUtils.class)
         );
     }
 

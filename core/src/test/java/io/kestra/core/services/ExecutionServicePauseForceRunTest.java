@@ -2,6 +2,7 @@ package io.kestra.core.services;
 
 import java.util.Optional;
 
+import io.kestra.core.async.AsyncOperationService;
 import io.kestra.core.async.AsyncOperationsConfiguration;
 import io.kestra.core.events.CrudEvent;
 import io.kestra.core.models.executions.Execution;
@@ -15,6 +16,7 @@ import io.kestra.core.repositories.MetricRepositoryInterface;
 import io.kestra.core.runners.FlowInputOutput;
 import io.kestra.core.scheduler.queue.TriggerEventQueue;
 import io.kestra.core.storages.StorageInterface;
+import io.kestra.core.utils.ExecutorsUtils;
 
 import io.micronaut.context.event.ApplicationEventPublisher;
 import org.junit.jupiter.api.BeforeEach;
@@ -61,7 +63,9 @@ class ExecutionServicePauseForceRunTest {
             mock(AsyncOperationWaiter.class),
             mock(AsyncOperationsConfiguration.class),
             mock(TriggerEventQueue.class),
-            Optional.empty()
+            Optional.empty(),
+            mock(AsyncOperationService.class),
+            mock(ExecutorsUtils.class)
         );
     }
 

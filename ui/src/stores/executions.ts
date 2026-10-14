@@ -415,7 +415,7 @@ export const useExecutionsStore = defineStore("executions", () => {
 
     const bulkDeleteExecution = (options: { executionsId: string[] } & DeleteExecutionOptions) => {
         const {executionsId, ...rest} = options
-        return ExecutionsAPI.deleteExecutionsByIds({body: executionsId, ...rest})
+        return ExecutionsAPI.deleteExecutionsByIds({body: executionsId, ...rest, async: true})
     }
 
     const queryDeleteExecution = (options: FilterQuery & DeleteExecutionOptions) => {
@@ -425,6 +425,7 @@ export const useExecutionsStore = defineStore("executions", () => {
             deleteLogs: options.deleteLogs,
             deleteMetrics: options.deleteMetrics,
             deleteStorage: options.deleteStorage,
+            async: true,
         })
     }
 

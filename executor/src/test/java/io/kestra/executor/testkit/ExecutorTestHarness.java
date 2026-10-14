@@ -289,7 +289,9 @@ public final class ExecutorTestHarness {
                 Mockito.mock(AsyncOperationWaiter.class),
                 Mockito.mock(AsyncOperationsConfiguration.class),
                 Mockito.mock(TriggerEventQueue.class),
-                Optional.empty()
+                Optional.empty(),
+                Mockito.mock(AsyncOperationService.class),
+                Mockito.mock(ExecutorsUtils.class)
             )
         );
         // every evaluate overload defaults to PASS; tests re-stub the overload they exercise
