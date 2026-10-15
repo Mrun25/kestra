@@ -1,0 +1,17 @@
+name: verify-21067
+on:
+  workflow_dispatch:
+jobs:
+  core-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: gradle
+      - name: core Check and FlowService tests
+        run: ./gradlew :core:test --tests 'io.kestra.core.models.flows.check.CheckTest' --tests 'io.kestra.core.services.FlowServiceTest' --console=plain --stacktrace
+      - name: webserver test-compile (ExecutionControllerTest rename)
+        run: ./gradlew :webserver:compileTestJava --console=plain
